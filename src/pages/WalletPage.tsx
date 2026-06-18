@@ -13,6 +13,7 @@ export function WalletPage() {
 
   useEffect(() => {
     if (!user) return;
+    setError(null);
     setLoading(true);
     getUserTransactions(user.id)
       .then(setTransactions)

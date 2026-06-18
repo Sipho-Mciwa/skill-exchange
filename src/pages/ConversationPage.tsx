@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Send } from 'lucide-react';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 import { subscribeToMessages, sendMessage } from '../services/conversations';
 import { useAuth } from '../contexts/AuthContext';
 import { Message } from '../types';
@@ -12,6 +14,7 @@ export function ConversationPage() {
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [recipientId, setRecipientId] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -19,6 +22,22 @@ export function ConversationPage() {
     const unsubscribe = subscribeToMessages(conversationId, setMessages);
     return unsubscribe; // cleanup unsubscribes the onSnapshot listener
   }, [conversationId]);
+
+  // Fetch conversation once to determine the other participant
+  useEffect(() => {
+    if (!conversationId || !user) return;
+    getDoc(doc(db, 'conversations', conversationId))
+      .then((snap) => {
+        if (snap.exists()) {
+          const data = snap.data() as { participantIds: string[] };
+          const other = data.participantIds.find((id) => id !== user.id) ?? null;
+          setRecipientId(other);
+        }
+      })
+      .catch(() => {
+        // non-critical — badge won't increment but messages still send
+      });
+  }, [conversationId, user]);
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -30,7 +49,7 @@ export function ConversationPage() {
     setSending(true);
     setError(null);
     try {
-      await sendMessage(conversationId, user.id, body.trim());
+      await sendMessage(conversationId, user.id, recipientId ?? '', body.trim());
       setBody('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send message');

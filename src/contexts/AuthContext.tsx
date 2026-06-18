@@ -12,9 +12,10 @@ import {
   signOut as firebaseSignOut,
   onAuthStateChanged,
 } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { auth, db, firestoreConverter } from '../lib/firebase';
 import { UserProfile } from '../types';
+import { createUserProfile } from '../services/users';
 
 interface AuthContextValue {
   firebaseUser: User | null;
@@ -27,27 +28,49 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-const userConverter = firestoreConverter<UserProfile>();
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+    let unsubProfile: (() => void) | null = null;
+
+    const unsubAuth = onAuthStateChanged(auth, (fbUser) => {
       setFirebaseUser(fbUser);
+
+      // Clean up previous profile listener
+      if (unsubProfile) {
+        unsubProfile();
+        unsubProfile = null;
+      }
+
       if (fbUser) {
-        const snap = await getDoc(
-          doc(db, 'users', fbUser.uid).withConverter(userConverter)
+        const userRef = doc(db, 'users', fbUser.uid).withConverter(
+          firestoreConverter<UserProfile>()
         );
-        setUser(snap.exists() ? snap.data() : null);
+        unsubProfile = onSnapshot(
+          userRef,
+          (snap) => {
+            setUser(snap.exists() ? snap.data() : null);
+            setLoading(false);
+          },
+          () => {
+            // Firestore unreachable — leave user as null so ProtectedRoute redirects to login
+            setUser(null);
+            setLoading(false);
+          }
+        );
       } else {
         setUser(null);
+        setLoading(false);
       }
-      setLoading(false);
     });
-    return unsubscribe;
+
+    return () => {
+      unsubAuth();
+      if (unsubProfile) unsubProfile();
+    };
   }, []);
 
   const signIn = async (email: string, password: string) => {
@@ -65,10 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       creditBalance: 10,
       createdAt: new Date().toISOString(),
     };
-    await setDoc(
-      doc(db, 'users', fbUser.uid).withConverter(userConverter),
-      profile
-    );
+    await createUserProfile(profile);
     setUser(profile);
   };
 

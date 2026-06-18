@@ -9,6 +9,7 @@ import {
   onSnapshot,
   updateDoc,
   serverTimestamp,
+  increment,
   Timestamp,
 } from 'firebase/firestore';
 import { db, firestoreConverter } from '../lib/firebase';
@@ -52,6 +53,7 @@ export async function getOrCreateConversation(
 export async function sendMessage(
   conversationId: string,
   senderId: string,
+  recipientId: string,
   body: string
 ): Promise<void> {
   const messagesRef = collection(db, 'conversations', conversationId, 'messages');
@@ -62,10 +64,11 @@ export async function sendMessage(
     createdAt: serverTimestamp(),
   });
 
-  // Update conversation preview
+  // Update conversation preview and increment recipient's unread count
   await updateDoc(doc(db, 'conversations', conversationId), {
     lastMessage: body,
     lastMessageAt: serverTimestamp(),
+    [`unreadCounts.${recipientId}`]: increment(1),
   });
 }
 
