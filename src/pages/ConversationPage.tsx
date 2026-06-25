@@ -65,6 +65,7 @@ export function ConversationPage() {
   const [hours, setHours] = useState(1);
   const [initiating, setInitiating] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [sessionError, setSessionError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -181,12 +182,18 @@ export function ConversationPage() {
   };
 
   const handleConfirmSession = async () => {
-    if (!activeSession) return;
+    if (!activeSession || !user) return;
+    if (user.creditBalance < activeSession.totalCredits) {
+      setSessionError(`Not enough credits — you have ${user.creditBalance}, need ${activeSession.totalCredits}.`);
+      return;
+    }
+    setSessionError(null);
     setConfirming(true);
     try {
-      await confirmSession(activeSession.id, user!.id);
+      await confirmSession(activeSession.id, user.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to confirm session');
+      setSessionError(err instanceof Error ? err.message : 'Failed to confirm session');
+    } finally {
       setConfirming(false);
     }
   };
@@ -362,6 +369,11 @@ export function ConversationPage() {
           <p className="text-xs text-[var(--color-muted)] mb-3">
             {activeSession.hoursCompleted} hour{activeSession.hoursCompleted !== 1 ? 's' : ''} × {activeSession.creditsPerHour} credits/hr. Confirming will transfer credits to your teacher.
           </p>
+          {sessionError && (
+            <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-3">
+              ⚠️ {sessionError}
+            </p>
+          )}
           <div className="flex gap-2">
             <button
               onClick={() => void handleConfirmSession()}
