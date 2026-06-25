@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Clock, MapPin } from 'lucide-react';
-import { getListing } from '../services/listings';
+import { getListing, deactivateListing } from '../services/listings';
 import { getUserProfile } from '../services/users';
 import { getOrCreateConversation } from '../services/conversations';
 import { useAuth } from '../contexts/AuthContext';
@@ -16,6 +16,7 @@ export function ListingDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [contacting, setContacting] = useState(false);
+  const [deactivating, setDeactivating] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -30,6 +31,24 @@ export function ListingDetailPage() {
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load listing'))
       .finally(() => setLoading(false));
   }, [id]);
+
+  const handleEdit = () => {
+    if (!listing) return;
+    navigate(`/my-listings?edit=${listing.id}`);
+  };
+
+  const handleDeactivate = async () => {
+    if (!listing) return;
+    if (!window.confirm('Are you sure you want to deactivate this listing?')) return;
+    setDeactivating(true);
+    try {
+      await deactivateListing(listing.id);
+      navigate('/my-listings');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to deactivate listing');
+      setDeactivating(false);
+    }
+  };
 
   const handleContact = async () => {
     if (!user || !listing) return;
@@ -195,11 +214,18 @@ export function ListingDetailPage() {
           <div className="px-6 py-5 bg-[var(--color-bg)] border-t border-[var(--color-border)]">
             {isOwner ? (
               <div className="flex items-center gap-3">
-                <button className="border border-[var(--color-border)] text-[var(--color-text-sub)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] rounded-full px-5 py-2.5 text-sm font-medium transition-colors">
+                <button
+                  onClick={handleEdit}
+                  className="border border-[var(--color-border)] text-[var(--color-text-sub)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] rounded-full px-5 py-2.5 text-sm font-medium transition-colors"
+                >
                   Edit listing
                 </button>
-                <button className="border border-red-200 text-red-400 hover:border-red-400 hover:text-red-600 rounded-full px-5 py-2.5 text-sm font-medium transition-colors">
-                  Deactivate
+                <button
+                  onClick={handleDeactivate}
+                  disabled={deactivating}
+                  className="border border-red-200 text-red-400 hover:border-red-400 hover:text-red-600 rounded-full px-5 py-2.5 text-sm font-medium transition-colors disabled:opacity-50"
+                >
+                  {deactivating ? 'Deactivating…' : 'Deactivate'}
                 </button>
               </div>
             ) : (
