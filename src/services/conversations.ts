@@ -86,6 +86,12 @@ export async function getUserConversations(uid: string): Promise<Conversation[]>
   }));
 }
 
+export async function markConversationRead(conversationId: string, userId: string): Promise<void> {
+  await updateDoc(doc(db, 'conversations', conversationId), {
+    [`unreadCounts.${userId}`]: 0,
+  });
+}
+
 export function subscribeToMessages(
   conversationId: string,
   onMessages: (msgs: Message[]) => void

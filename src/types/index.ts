@@ -59,6 +59,7 @@ export interface Listing {
   category: ListingCategory;
   tags: string[];
   location: GeoPoint;
+  geohash?: string;
   radiusKm: number;
   creditsPerHour: number;
   isActive: boolean;

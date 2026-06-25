@@ -7,9 +7,18 @@ import {
   getDocs,
   query,
   where,
+  orderBy,
+  startAt,
+  endAt,
   serverTimestamp,
   Timestamp,
 } from 'firebase/firestore';
+import {
+  geohashForLocation,
+  geohashQueryBounds,
+  distanceBetween,
+  type Geopoint,
+} from 'geofire-common';
 import { db, firestoreConverter } from '../lib/firebase';
 import { Listing, ListingFormValues, GeoPoint } from '../types';
 
@@ -36,6 +45,7 @@ export async function createListing(
   values: ListingFormValues,
   location: GeoPoint
 ): Promise<string> {
+  const geohash = geohashForLocation([location.lat, location.lng]);
   const ref = await addDoc(collection(db, 'listings'), {
     userId: uid,
     type: values.type,
@@ -44,6 +54,7 @@ export async function createListing(
     category: values.category,
     tags: parseTags(values.tags),
     location,
+    geohash,
     radiusKm: values.radiusKm,
     creditsPerHour: values.creditsPerHour,
     isActive: true,
@@ -54,7 +65,8 @@ export async function createListing(
 
 export async function updateListing(
   id: string,
-  values: Partial<ListingFormValues>
+  values: Partial<ListingFormValues>,
+  location?: GeoPoint
 ): Promise<void> {
   const ref = doc(db, 'listings', id);
   const updates: Record<string, unknown> = {};
@@ -65,6 +77,10 @@ export async function updateListing(
   if (values.creditsPerHour !== undefined) updates.creditsPerHour = values.creditsPerHour;
   if (values.radiusKm !== undefined) updates.radiusKm = values.radiusKm;
   if (values.tags !== undefined) updates.tags = parseTags(values.tags);
+  if (location !== undefined) {
+    updates.location = location;
+    updates.geohash = geohashForLocation([location.lat, location.lng]);
+  }
   await updateDoc(ref, updates);
 }
 
@@ -88,6 +104,67 @@ export async function getActiveListings(): Promise<Listing[]> {
     const data = d.data();
     return { ...data, createdAt: normaliseTimestamp(data.createdAt) };
   });
+}
+
+export async function getListingsByLocation(
+  lat: number,
+  lng: number,
+  radiusKm: number
+): Promise<Array<Listing & { distanceKm: number }>> {
+  const center: Geopoint = [lat, lng];
+  const radiusMetres = radiusKm * 1000;
+  const bounds = geohashQueryBounds(center, radiusMetres);
+
+  const snapshots = await Promise.all(
+    bounds.map((b) =>
+      getDocs(
+        query(
+          collection(db, 'listings'),
+          where('isActive', '==', true),
+          orderBy('geohash'),
+          startAt(b[0]),
+          endAt(b[1])
+        )
+      )
+    )
+  );
+
+  const seen = new Set<string>();
+  const results: Array<Listing & { distanceKm: number }> = [];
+
+  for (const snap of snapshots) {
+    for (const d of snap.docs) {
+      if (seen.has(d.id)) continue;
+      seen.add(d.id);
+
+      const raw = d.data() as Record<string, unknown>;
+      const loc = raw.location as GeoPoint | undefined;
+      if (!loc) continue;
+
+      const distanceKm = distanceBetween([loc.lat, loc.lng], center);
+      if (distanceKm > radiusKm) continue;
+
+      const listing: Listing = {
+        id: d.id,
+        userId: raw.userId as string,
+        type: raw.type as 'offer' | 'request',
+        title: raw.title as string,
+        description: raw.description as string,
+        category: raw.category as Listing['category'],
+        tags: (raw.tags as string[]) ?? [],
+        location: loc,
+        geohash: raw.geohash as string | undefined,
+        radiusKm: raw.radiusKm as number,
+        creditsPerHour: raw.creditsPerHour as number,
+        isActive: raw.isActive as boolean,
+        createdAt: normaliseTimestamp(raw.createdAt),
+      };
+
+      results.push({ ...listing, distanceKm });
+    }
+  }
+
+  return results.sort((a, b) => a.distanceKm - b.distanceKm);
 }
 
 export async function getUserListings(uid: string): Promise<Listing[]> {

@@ -1,5 +1,4 @@
 import { Link } from 'react-router-dom';
-import { MapPin, Clock } from 'lucide-react';
 import { Listing, CATEGORY_LABELS } from '../types';
 
 interface ListingCardProps {
@@ -8,38 +7,39 @@ interface ListingCardProps {
 }
 
 export function ListingCard({ listing, distanceKm }: ListingCardProps) {
+  const { title, description, type, category, creditsPerHour } = listing;
+
   return (
-    <Link
-      to={`/listings/${listing.id}`}
-      className="block rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition hover:shadow-md"
-    >
-      <div className="mb-1 flex items-center justify-between">
-        <span
-          className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-            listing.type === 'offer'
-              ? 'bg-green-100 text-green-700'
-              : 'bg-amber-100 text-amber-700'
-          }`}
-        >
-          {listing.type === 'offer' ? 'Offering' : 'Requesting'}
-        </span>
-        <span className="text-xs text-gray-500">{CATEGORY_LABELS[listing.category]}</span>
-      </div>
+    <Link to={`/listings/${listing.id}`} className="block">
+      <div className="bg-white rounded-2xl border border-[var(--color-border)] p-5 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer">
+        {/* Header row */}
+        <div className="flex items-center justify-between">
+          {/* Type badge */}
+          {type === 'offer'
+            ? <span className="bg-[var(--color-accent-light)] text-[var(--color-primary)] font-semibold text-xs px-2.5 py-1 rounded-full">Offering</span>
+            : <span className="bg-amber-50 text-amber-700 font-semibold text-xs px-2.5 py-1 rounded-full">Requesting</span>
+          }
+          {/* Category */}
+          <span className="text-xs font-medium uppercase tracking-wider text-[var(--color-muted)]">{CATEGORY_LABELS[category]}</span>
+        </div>
 
-      <h3 className="mt-1 font-semibold text-gray-900 line-clamp-1">{listing.title}</h3>
-      <p className="mt-1 text-sm text-gray-500 line-clamp-2">{listing.description}</p>
+        {/* Title */}
+        <h3 className="text-base font-semibold text-[var(--color-text)] mt-3">{title}</h3>
 
-      <div className="mt-3 flex items-center justify-between text-xs text-gray-400">
-        <span className="flex items-center gap-1">
-          <Clock size={12} />
-          {listing.creditsPerHour} credit{listing.creditsPerHour !== 1 ? 's' : ''}/hr
-        </span>
-        {distanceKm !== undefined && (
-          <span className="flex items-center gap-1">
-            <MapPin size={12} />
-            {distanceKm.toFixed(1)} km away
+        {/* Description */}
+        <p className="text-sm text-[var(--color-text-sub)] mt-1 line-clamp-2">{description}</p>
+
+        {/* Divider + footer */}
+        <div className="border-t border-[var(--color-border)] mt-4 pt-3 flex items-center justify-between">
+          <span className="text-xs font-medium text-[var(--color-muted)] flex items-center gap-1">
+            ⏱ {creditsPerHour} credits/hr
           </span>
-        )}
+          {distanceKm !== undefined && (
+            <span className="bg-[var(--color-bg)] text-[var(--color-muted)] text-xs px-2 py-0.5 rounded-full">
+              📍 {distanceKm < 0.5 ? 'Nearby' : `${distanceKm.toFixed(1)} km`}
+            </span>
+          )}
+        </div>
       </div>
     </Link>
   );
