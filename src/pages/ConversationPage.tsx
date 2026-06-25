@@ -184,7 +184,7 @@ export function ConversationPage() {
     if (!activeSession) return;
     setConfirming(true);
     try {
-      await confirmSession(activeSession.id);
+      await confirmSession(activeSession.id, user!.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to confirm session');
       setConfirming(false);
