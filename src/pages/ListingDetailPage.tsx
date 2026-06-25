@@ -17,6 +17,7 @@ export function ListingDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [contacting, setContacting] = useState(false);
   const [deactivating, setDeactivating] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -39,8 +40,8 @@ export function ListingDetailPage() {
 
   const handleDeactivate = async () => {
     if (!listing) return;
-    if (!window.confirm('Are you sure you want to deactivate this listing?')) return;
     setDeactivating(true);
+    setShowConfirm(false);
     try {
       await deactivateListing(listing.id);
       navigate('/my-listings');
@@ -221,7 +222,7 @@ export function ListingDetailPage() {
                   Edit listing
                 </button>
                 <button
-                  onClick={handleDeactivate}
+                  onClick={() => setShowConfirm(true)}
                   disabled={deactivating}
                   className="border border-red-200 text-red-400 hover:border-red-400 hover:text-red-600 rounded-full px-5 py-2.5 text-sm font-medium transition-colors disabled:opacity-50"
                 >
@@ -252,6 +253,50 @@ export function ListingDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Deactivate confirmation modal */}
+      {showConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center px-4"
+          style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}
+          onClick={() => setShowConfirm(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Icon */}
+            <div className="w-11 h-11 rounded-full bg-red-50 flex items-center justify-center mb-4">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-red-500">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                <path d="M10 11v6M14 11v6" />
+                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+              </svg>
+            </div>
+
+            <h2 className="text-base font-semibold text-[var(--color-text)]">Deactivate listing?</h2>
+            <p className="text-sm text-[var(--color-muted)] mt-1.5">
+              This will remove <span className="font-medium text-[var(--color-text)]">{listing.title}</span> from Browse. You can recreate it at any time.
+            </p>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowConfirm(false)}
+                className="flex-1 border border-[var(--color-border)] text-[var(--color-text-sub)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] rounded-full py-2.5 text-sm font-medium transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void handleDeactivate()}
+                className="flex-1 bg-red-500 hover:bg-red-600 text-white rounded-full py-2.5 text-sm font-semibold transition-colors"
+              >
+                Deactivate
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
