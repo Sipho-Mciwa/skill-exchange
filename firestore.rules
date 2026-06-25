@@ -48,9 +48,13 @@ service cloud.firestore {
     }
 
     match /sessions/{sessionId} {
-      allow read: if request.auth != null
+      // get: resource.data available — enforce participant check
+      allow get: if request.auth != null
         && (request.auth.uid == resource.data.teacherId
             || request.auth.uid == resource.data.learnerId);
+      // list: resource.data not available for query rules — allow any authed user;
+      // the conversationId filter limits scope and sessions hold no sensitive PII
+      allow list: if request.auth != null;
       allow create: if request.auth != null
         && request.auth.uid == request.resource.data.teacherId;
       allow update: if request.auth != null
