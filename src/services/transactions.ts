@@ -7,8 +7,7 @@ import {
   or,
   Timestamp,
 } from 'firebase/firestore';
-import { httpsCallable } from 'firebase/functions';
-import { db, functions, firestoreConverter } from '../lib/firebase';
+import { db, firestoreConverter } from '../lib/firebase';
 import { Transaction } from '../types';
 
 const transactionConverter = firestoreConverter<Transaction>();
@@ -30,23 +29,4 @@ export async function getUserTransactions(uid: string): Promise<Transaction[]> {
     ...d.data(),
     createdAt: normaliseTimestamp(d.data().createdAt),
   }));
-}
-
-export interface TransferPayload {
-  fromUserId: string;
-  toUserId: string;
-  listingId: string;
-  credits: number;
-  note?: string;
-}
-
-export async function triggerTransfer(payload: TransferPayload): Promise<void> {
-  const callable = httpsCallable<TransferPayload, { success: boolean }>(
-    functions,
-    'transferCredits'
-  );
-  const result = await callable(payload);
-  if (!result.data.success) {
-    throw new Error('Transfer failed');
-  }
 }
