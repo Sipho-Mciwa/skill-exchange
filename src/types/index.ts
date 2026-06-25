@@ -92,6 +92,23 @@ export interface Transaction {
   listingId: string;
   credits: number;
   note?: string;
+  sessionId?: string;
+  createdAt: string;
+}
+
+export interface Session {
+  id: string;
+  conversationId: string;
+  listingId: string;
+  teacherId: string;
+  learnerId: string;
+  creditsPerHour: number;
+  hoursCompleted: number;
+  totalCredits: number;
+  status: 'pending_learner' | 'confirmed' | 'disputed' | 'expired';
+  teacherConfirmedAt: string | null;
+  learnerConfirmedAt: string | null;
+  expiresAt: string;
   createdAt: string;
 }
 

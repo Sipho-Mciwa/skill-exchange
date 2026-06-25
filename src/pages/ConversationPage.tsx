@@ -3,11 +3,15 @@ import { useParams, Link } from 'react-router-dom';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { subscribeToMessages, sendMessage, markConversationRead } from '../services/conversations';
+import { getListing } from '../services/listings';
+import { initiateSession, confirmSession, disputeSession, subscribeToSession } from '../services/sessions';
 import { useAuth } from '../contexts/AuthContext';
 import { Message } from '../types';
+import type { Session } from '../types';
 
 interface ConversationMeta {
   listingTitle: string;
+  listingId: string;
   participantIds: string[];
 }
 
@@ -55,6 +59,12 @@ export function ConversationPage() {
   const [error, setError] = useState<string | null>(null);
   const [recipientId, setRecipientId] = useState<string | null>(null);
   const [meta, setMeta] = useState<ConversationMeta | null>(null);
+  const [listingOwnerId, setListingOwnerId] = useState<string | null>(null);
+  const [creditsPerHour, setCreditsPerHour] = useState<number>(1);
+  const [activeSession, setActiveSession] = useState<Session | null>(null);
+  const [hours, setHours] = useState(1);
+  const [initiating, setInitiating] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -70,10 +80,20 @@ export function ConversationPage() {
     getDoc(doc(db, 'conversations', conversationId))
       .then((snap) => {
         if (snap.exists()) {
-          const data = snap.data() as { participantIds: string[]; listingTitle: string };
+          const data = snap.data() as { participantIds: string[]; listingTitle: string; listingId: string };
           const other = data.participantIds.find((id) => id !== user.id) ?? null;
           setRecipientId(other);
-          setMeta({ listingTitle: data.listingTitle, participantIds: data.participantIds });
+          setMeta({ listingTitle: data.listingTitle, listingId: data.listingId, participantIds: data.participantIds });
+
+          // Fetch listing to get teacher and creditsPerHour
+          return getListing(data.listingId);
+        }
+        return null;
+      })
+      .then((listing) => {
+        if (listing) {
+          setListingOwnerId(listing.userId);
+          setCreditsPerHour(listing.creditsPerHour);
         }
       })
       .then(() => markConversationRead(conversationId, user.id))
@@ -81,6 +101,12 @@ export function ConversationPage() {
         // non-critical
       });
   }, [conversationId, user]);
+
+  // Subscribe to active session for this conversation
+  useEffect(() => {
+    if (!conversationId) return;
+    return subscribeToSession(conversationId, setActiveSession);
+  }, [conversationId]);
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -141,6 +167,40 @@ export function ConversationPage() {
     setBody(p.body);
     textareaRef.current?.focus();
   };
+
+  const handleInitiateSession = async () => {
+    if (!user || !meta || !recipientId || !listingOwnerId) return;
+    setInitiating(true);
+    try {
+      await initiateSession(conversationId!, meta.listingId, listingOwnerId, recipientId, creditsPerHour, hours);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to initiate session');
+    } finally {
+      setInitiating(false);
+    }
+  };
+
+  const handleConfirmSession = async () => {
+    if (!activeSession) return;
+    setConfirming(true);
+    try {
+      await confirmSession(activeSession.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to confirm session');
+      setConfirming(false);
+    }
+  };
+
+  const handleDisputeSession = async () => {
+    if (!activeSession) return;
+    try {
+      await disputeSession(activeSession.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to dispute session');
+    }
+  };
+
+  const isTeacher = !!listingOwnerId && user?.id === listingOwnerId;
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)]">
@@ -275,6 +335,87 @@ export function ConversationPage() {
         )}
         <div ref={bottomRef} />
       </div>
+
+      {/* Session banner */}
+      {activeSession?.status === 'confirmed' ? (
+        <div className="flex-shrink-0 mx-4 sm:mx-6 mb-3 bg-green-50 border border-green-200 rounded-2xl px-4 py-3 flex items-center gap-3">
+          <span className="text-green-600 text-lg">✓</span>
+          <p className="text-sm text-green-800 font-medium">
+            Session complete! {activeSession.totalCredits} credit{activeSession.totalCredits !== 1 ? 's' : ''} transferred. Check your wallet.
+          </p>
+        </div>
+      ) : isTeacher && activeSession?.status === 'pending_learner' ? (
+        <div className="flex-shrink-0 mx-4 sm:mx-6 mb-3 bg-[var(--color-accent-light,#f0f4ff)] border border-[var(--color-border)] rounded-2xl px-4 py-3 flex items-center gap-3">
+          <svg className="animate-spin h-4 w-4 text-[var(--color-primary)] flex-shrink-0" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+          </svg>
+          <p className="text-sm text-[var(--color-text-sub,var(--color-muted))]">
+            Waiting for learner to confirm {activeSession.totalCredits} credit{activeSession.totalCredits !== 1 ? 's' : ''}…
+          </p>
+        </div>
+      ) : !isTeacher && activeSession?.status === 'pending_learner' ? (
+        <div className="flex-shrink-0 mx-4 sm:mx-6 mb-3 bg-[var(--color-accent-light,#f0f4ff)] border border-[var(--color-border)] rounded-2xl px-4 py-3">
+          <p className="text-sm font-semibold text-[var(--color-text)] mb-1">
+            Confirm session — {activeSession.totalCredits} credit{activeSession.totalCredits !== 1 ? 's' : ''}
+          </p>
+          <p className="text-xs text-[var(--color-muted)] mb-3">
+            {activeSession.hoursCompleted} hour{activeSession.hoursCompleted !== 1 ? 's' : ''} × {activeSession.creditsPerHour} credits/hr. Confirming will transfer credits to your teacher.
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => void handleConfirmSession()}
+              disabled={confirming}
+              className="flex-1 bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark,var(--color-primary))] text-white text-sm font-medium py-2 px-4 rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {confirming ? 'Confirming…' : 'Confirm'}
+            </button>
+            <button
+              onClick={() => void handleDisputeSession()}
+              disabled={confirming}
+              className="flex-1 bg-white border border-[var(--color-border)] text-[var(--color-text)] text-sm font-medium py-2 px-4 rounded-xl hover:bg-red-50 hover:border-red-200 hover:text-red-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Dispute
+            </button>
+          </div>
+        </div>
+      ) : isTeacher && !activeSession && listingOwnerId ? (
+        <div className="flex-shrink-0 mx-4 sm:mx-6 mb-3 bg-[var(--color-accent-light,#f0f4ff)] border border-[var(--color-border)] rounded-2xl px-4 py-3">
+          <p className="text-sm font-semibold text-[var(--color-text)] mb-3">Mark session complete</p>
+          <div className="flex items-center gap-3 mb-3">
+            <span className="text-xs text-[var(--color-muted)]">Hours completed</span>
+            <div className="flex items-center gap-2 ml-auto">
+              <button
+                onClick={() => setHours((h) => Math.max(1, h - 1))}
+                disabled={hours <= 1}
+                aria-label="Decrease hours"
+                className="w-8 h-8 rounded-full border border-[var(--color-border)] bg-white text-[var(--color-text)] text-sm font-bold flex items-center justify-center hover:bg-[var(--color-bg)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                −
+              </button>
+              <span className="w-6 text-center text-sm font-semibold text-[var(--color-text)]">{hours}</span>
+              <button
+                onClick={() => setHours((h) => Math.min(8, h + 1))}
+                disabled={hours >= 8}
+                aria-label="Increase hours"
+                className="w-8 h-8 rounded-full border border-[var(--color-border)] bg-white text-[var(--color-text)] text-sm font-bold flex items-center justify-center hover:bg-[var(--color-bg)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                +
+              </button>
+            </div>
+          </div>
+          <p className="text-xs text-[var(--color-muted)] mb-3">
+            {hours} hr{hours !== 1 ? 's' : ''} × {creditsPerHour} credits/hr = <span className="font-semibold text-[var(--color-text)]">{hours * creditsPerHour} credits</span>
+          </p>
+          <button
+            onClick={() => void handleInitiateSession()}
+            disabled={initiating}
+            className="w-full bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark,var(--color-primary))] text-white text-sm font-medium py-2 px-4 rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {initiating ? 'Sending request…' : 'Mark complete'}
+          </button>
+        </div>
+      ) : null}
 
       {/* Input bar */}
       <div className="bg-white border-t border-[var(--color-border)] px-4 sm:px-6 py-4 flex-shrink-0">

@@ -40,5 +40,17 @@ service cloud.firestore {
             || resource.data.toUserId == request.auth.uid);
       allow write: if false; // only Cloud Function writes transactions
     }
+
+    match /sessions/{sessionId} {
+      allow read: if request.auth != null
+        && (request.auth.uid == resource.data.teacherId
+            || request.auth.uid == resource.data.learnerId);
+      allow create: if request.auth != null
+        && request.auth.uid == request.resource.data.teacherId;
+      allow update: if request.auth != null
+        && request.auth.uid == resource.data.learnerId
+        && (request.resource.data.status == 'confirmed'
+            || request.resource.data.status == 'disputed');
+    }
   }
 }

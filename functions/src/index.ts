@@ -72,3 +72,67 @@ export const transferCredits = functions.https.onCall(
     return { success: true };
   }
 );
+
+interface SessionData {
+  status: string;
+  teacherId: string;
+  learnerId: string;
+  totalCredits: number;
+  listingId: string;
+}
+
+export const onSessionConfirmed = functions.firestore
+  .document('sessions/{sessionId}')
+  .onUpdate(async (change, context) => {
+    const before = change.before.data() as SessionData;
+    const after = change.after.data() as SessionData;
+
+    if (before.status === after.status) return null;
+    if (after.status !== 'confirmed') return null;
+
+    const { teacherId, learnerId, totalCredits, listingId } = after;
+    const sessionId = context.params.sessionId as string;
+
+    await db.runTransaction(async (tx) => {
+      const teacherRef = db.collection('users').doc(teacherId);
+      const learnerRef = db.collection('users').doc(learnerId);
+      const [teacherDoc, learnerDoc] = await Promise.all([tx.get(teacherRef), tx.get(learnerRef)]);
+
+      const teacherBalance: number = (teacherDoc.data() as { creditBalance: number } | undefined)?.creditBalance ?? 0;
+      const learnerBalance: number = (learnerDoc.data() as { creditBalance: number } | undefined)?.creditBalance ?? 0;
+
+      if (learnerBalance < totalCredits) {
+        tx.update(change.after.ref, { status: 'disputed', disputeReason: 'insufficient_credits' });
+        return;
+      }
+
+      tx.update(learnerRef, { creditBalance: learnerBalance - totalCredits });
+      tx.update(teacherRef, { creditBalance: teacherBalance + totalCredits });
+      tx.set(db.collection('transactions').doc(), {
+        fromUserId: learnerId,
+        toUserId: teacherId,
+        listingId,
+        sessionId,
+        credits: totalCredits,
+        note: 'Session confirmed',
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    });
+
+    return null;
+  });
+
+export const expireSessions = functions.pubsub
+  .schedule('every 60 minutes')
+  .onRun(async () => {
+    const now = admin.firestore.Timestamp.now();
+    const snap = await db.collection('sessions')
+      .where('status', '==', 'pending_learner')
+      .where('expiresAt', '<=', now)
+      .get();
+
+    const batch = db.batch();
+    snap.docs.forEach((docSnap) => batch.update(docSnap.ref, { status: 'expired' }));
+    await batch.commit();
+    return null;
+  });
