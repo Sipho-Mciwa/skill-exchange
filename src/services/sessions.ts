@@ -56,9 +56,9 @@ interface RawSessionData {
   learnerId: string;
   totalCredits: number;
   listingId: string;
+  expiresAt: Timestamp;
 }
 
-// Client-side atomic transfer (workaround until project is on Blaze plan for Cloud Functions)
 export async function confirmSession(sessionId: string, learnerId: string): Promise<void> {
   const sessionRef = doc(db, 'sessions', sessionId);
 
@@ -69,6 +69,7 @@ export async function confirmSession(sessionId: string, learnerId: string): Prom
     const sessionData = sessionSnap.data() as RawSessionData;
     if (sessionData.status !== 'pending_learner') throw new Error('Session is no longer pending');
     if (sessionData.learnerId !== learnerId) throw new Error('Only the learner can confirm this session');
+    if (sessionData.expiresAt.toMillis() <= Date.now()) throw new Error('This session has expired.');
 
     const teacherRef = doc(db, 'users', sessionData.teacherId);
     const learnerRef = doc(db, 'users', sessionData.learnerId);
@@ -120,6 +121,16 @@ export function subscribeToSession(
   return onSnapshot(q, (snap) => {
     const docs = snap.docs.map((d) => {
       const raw = d.data();
+      const isExpired =
+        raw.status === 'pending_learner' &&
+        raw.expiresAt instanceof Timestamp &&
+        raw.expiresAt.toMillis() <= Date.now();
+
+      if (isExpired) {
+        // Persist the expired status in the background; rule allows this once expiresAt has passed
+        updateDoc(d.ref, { status: 'expired' }).catch(() => {});
+      }
+
       return {
         id: d.id,
         conversationId: raw.conversationId as string,
@@ -129,7 +140,7 @@ export function subscribeToSession(
         creditsPerHour: raw.creditsPerHour as number,
         hoursCompleted: raw.hoursCompleted as number,
         totalCredits: raw.totalCredits as number,
-        status: raw.status as Session['status'],
+        status: (isExpired ? 'expired' : raw.status) as Session['status'],
         teacherConfirmedAt: normaliseTs(raw.teacherConfirmedAt),
         learnerConfirmedAt: normaliseTs(raw.learnerConfirmedAt),
         expiresAt: normaliseTs(raw.expiresAt) ?? '',
@@ -137,17 +148,10 @@ export function subscribeToSession(
       } satisfies Session;
     });
 
-    // Client-side: prefer pending_learner first, then confirmed
     const pending = docs.find((s) => s.status === 'pending_learner');
-    if (pending) {
-      callback(pending);
-      return;
-    }
+    if (pending) { callback(pending); return; }
     const confirmed = docs.find((s) => s.status === 'confirmed');
-    if (confirmed) {
-      callback(confirmed);
-      return;
-    }
+    if (confirmed) { callback(confirmed); return; }
     callback(null);
   });
 }
