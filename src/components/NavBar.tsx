@@ -13,9 +13,9 @@ export function NavBar() {
   return (
     <nav className="h-16 bg-white border-b border-[var(--color-border)] sticky top-0 z-50">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 h-full flex items-center justify-between">
-        <Link to="/" className="flex items-center gap-2 font-bold text-lg tracking-tight text-[var(--color-primary)]">
+        <span className="flex items-center gap-2 font-bold text-lg tracking-tight text-[var(--color-primary)] select-none">
           🌿 <span>NSE</span>
-        </Link>
+        </span>
 
         {user ? (
           <div className="flex items-center gap-3">
