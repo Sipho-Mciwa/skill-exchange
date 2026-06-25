@@ -65,7 +65,8 @@ service cloud.firestore {
         && (request.auth.uid == resource.data.teacherId
             || request.auth.uid == resource.data.learnerId)
         && request.resource.data.status == 'expired'
-        && resource.data.expiresAt <= request.time;
+        && resource.data.expiresAt <= request.time
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
     }
   }
 }

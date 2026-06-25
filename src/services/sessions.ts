@@ -5,6 +5,7 @@ import {
   where,
   onSnapshot,
   updateDoc,
+  getDoc,
   doc,
   runTransaction,
   serverTimestamp,
@@ -104,9 +105,11 @@ export async function confirmSession(sessionId: string, learnerId: string): Prom
 }
 
 export async function disputeSession(sessionId: string): Promise<void> {
-  await updateDoc(doc(db, 'sessions', sessionId), {
-    status: 'disputed',
-  });
+  const sessionSnap = await getDoc(doc(db, 'sessions', sessionId));
+  if (!sessionSnap.exists()) throw new Error('Session not found');
+  const data = sessionSnap.data() as { expiresAt: Timestamp };
+  if (data.expiresAt.toMillis() <= Date.now()) throw new Error('This session has expired.');
+  await updateDoc(doc(db, 'sessions', sessionId), { status: 'disputed' });
 }
 
 export function subscribeToSession(
@@ -152,6 +155,8 @@ export function subscribeToSession(
     if (pending) { callback(pending); return; }
     const confirmed = docs.find((s) => s.status === 'confirmed');
     if (confirmed) { callback(confirmed); return; }
+    const expired = docs.find((s) => s.status === 'expired');
+    if (expired) { callback(expired); return; }
     callback(null);
   });
 }

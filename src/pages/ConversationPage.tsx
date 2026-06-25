@@ -344,7 +344,14 @@ export function ConversationPage() {
       </div>
 
       {/* Session banner */}
-      {activeSession?.status === 'confirmed' ? (
+      {activeSession?.status === 'expired' ? (
+        <div className="flex-shrink-0 mx-4 sm:mx-6 mb-3 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 flex items-center gap-3">
+          <span className="text-amber-600 text-lg">⏱</span>
+          <p className="text-sm text-amber-800 font-medium">
+            This session has expired. Credits were not transferred.
+          </p>
+        </div>
+      ) : activeSession?.status === 'confirmed' ? (
         <div className="flex-shrink-0 mx-4 sm:mx-6 mb-3 bg-green-50 border border-green-200 rounded-2xl px-4 py-3 flex items-center gap-3">
           <span className="text-green-600 text-lg">✓</span>
           <p className="text-sm text-green-800 font-medium">
